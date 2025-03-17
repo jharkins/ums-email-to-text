@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "test": "node test.mjs",
-    "start": "node index.mjs"
+    "start": "node index.mjs",
+    "predeploy": "rm -f function.zip && zip -r function.zip . -x \"*.git*\" \"test/*\" \"README.md\" \".env*\"",
+    "deploy": "aws lambda update-function-code --function-name ums-email-to-text --region us-west-2 --zip-file fileb://function.zip",
+    "deploy:local": "npm run predeploy && npm run deploy"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",

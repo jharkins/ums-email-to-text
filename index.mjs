@@ -1,7 +1,34 @@
+// Load environment variables for local development only
+if (process.env.NODE_ENV !== 'production') {
+  const { dirname } = await import('path');
+  const { fileURLToPath } = await import('url');
+  const { default: dotenv } = await import('dotenv');
+  
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  dotenv.config({ path: `${__dirname}/.env` });
+}
+
+// Other imports after environment variables are loaded
 import { S3Client, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { parseEmail } from './emailParser.mjs';
 
-const bucketName = 'bitbot-emails';
+// Required environment variables
+const requiredEnvVars = [
+  'S3_BUCKET_NAME',
+  'OPENAI_API_KEY',
+  'OPENPHONE_API_KEY',
+  'OPENPHONE_FROM_NUMBER',
+  'DEFAULT_NOTIFICATION_NUMBERS'
+];
+
+// Validate all required environment variables
+requiredEnvVars.forEach(varName => {
+  if (!process.env[varName]) {
+    throw new Error(`${varName} environment variable is required`);
+  }
+});
+
+const bucketName = process.env.S3_BUCKET_NAME;
 
 export const handler = async (event, context) => {
   try {
@@ -24,22 +51,36 @@ export const handler = async (event, context) => {
         }));
 
         const emailContent = await email.Body.transformToString();
-        const parsedEmail = await parseEmail(emailContent);
+        const parsedEmail = await parseEmail(emailContent, record.Key);
         console.log(`Successfully parsed email: ${record.Key}`);
-        return parsedEmail;
+        return {
+          key: record.Key,
+          status: 'success',
+          result: parsedEmail
+        };
       } catch (err) {
         console.error(`Error processing email ${record.Key}:`, err);
-        return null;
+        return {
+          key: record.Key,
+          status: 'error',
+          error: err.message
+        };
       }
     }));
 
-    const successfulResults = results.filter(result => result !== null);
+    const successfulResults = results.filter(result => result.status === 'success');
+    const failedResults = results.filter(result => result.status === 'error');
     
     return {
       statusCode: 200,
       body: JSON.stringify({
         message: `Successfully processed ${successfulResults.length} out of ${response.KeyCount} emails`,
-        results: successfulResults
+        successful: successfulResults.length,
+        failed: failedResults.length,
+        results: {
+          successful: successfulResults,
+          failed: failedResults.map(r => ({ key: r.key, error: r.error }))
+        }
       })
     };
   } catch (error) {

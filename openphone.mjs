@@ -1,3 +1,11 @@
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+// Load environment variables
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: `${__dirname}/.env` });
+
 // Load from environment variables
 const OPENPHONE_API_KEY = process.env.OPENPHONE_API_KEY;
 const OPENPHONE_FROM_NUMBER = process.env.OPENPHONE_FROM_NUMBER;
@@ -30,11 +38,18 @@ export async function sendTextMessage(message, toNumber) {
     const formattedToNumber = validatePhoneNumber(toNumber);
     const formattedFromNumber = validatePhoneNumber(OPENPHONE_FROM_NUMBER);
 
+    // Log request details for debugging
+    console.log('\nSending OpenPhone request:');
+    console.log('URL:', OPENPHONE_API_URL);
+    console.log('From:', formattedFromNumber);
+    console.log('To:', formattedToNumber);
+    console.log('Message length:', message.length);
+
     const response = await fetch(OPENPHONE_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENPHONE_API_KEY}`
+        'Authorization': OPENPHONE_API_KEY // Remove 'Bearer ' prefix as it might not be needed
       },
       body: JSON.stringify({
         content: message,
@@ -46,6 +61,12 @@ export async function sendTextMessage(message, toNumber) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
+      console.error('OpenPhone API Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        error: errorData
+      });
       throw new Error(`OpenPhone API error: ${response.status} ${response.statusText} ${JSON.stringify(errorData)}`);
     }
 

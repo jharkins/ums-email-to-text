@@ -6,14 +6,14 @@ import { S3Client, CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/clien
 
 // Load from environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const DEFAULT_NOTIFICATION_NUMBER = process.env.DEFAULT_NOTIFICATION_NUMBER;
+const DEFAULT_NOTIFICATION_NUMBERS = (process.env.DEFAULT_NOTIFICATION_NUMBERS || '').split(',').filter(Boolean);
 const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'bitbot-emails';
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
 
 // Validate environment variables
 if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required');
-if (!DEFAULT_NOTIFICATION_NUMBER) throw new Error('DEFAULT_NOTIFICATION_NUMBER is required');
+if (!DEFAULT_NOTIFICATION_NUMBERS.length) throw new Error('DEFAULT_NOTIFICATION_NUMBERS is required');
 
 const client = new OpenAI({
   apiKey: OPENAI_API_KEY,
@@ -117,7 +117,7 @@ async function retryOperation(operation, maxRetries = MAX_RETRIES) {
   throw lastError;
 }
 
-export async function parseEmail(emailContent, sourceKey, notificationNumber = DEFAULT_NOTIFICATION_NUMBER) {
+export async function parseEmail(emailContent, sourceKey, notificationNumbers = DEFAULT_NOTIFICATION_NUMBERS) {
   const startTime = Date.now();
   let processingStatus = 'started';
   
@@ -177,22 +177,33 @@ export async function parseEmail(emailContent, sourceKey, notificationNumber = D
     processingStatus = 'analyzed';
 
     let newLocation = null;
-    let messageDelivered = false;
+    let messageDeliveryStatus = [];
     
-    // If this is a service request, send a text message
+    // If this is a service request, send text messages
     if (validatedData.type === 'service_request') {
       const message = formatServiceTicketMessage(validatedData);
       if (message) {
-        console.log('\n📱 Sending notification to:', notificationNumber);
-        await retryOperation(async () => {
-          await sendTextMessage(message, notificationNumber);
-          messageDelivered = true;
-          console.log('✅ Message delivered successfully');
+        console.log('\n📱 Sending notifications to:', notificationNumbers.join(', '));
+        
+        // Send to all numbers in parallel
+        const deliveryPromises = notificationNumbers.map(async number => {
+          try {
+            await retryOperation(async () => {
+              await sendTextMessage(message, number);
+              console.log(`✅ Message delivered successfully to ${number}`);
+              return { number, success: true };
+            });
+          } catch (error) {
+            console.error(`❌ Failed to deliver message to ${number}:`, error.message);
+            return { number, success: false, error: error.message };
+          }
         });
+
+        messageDeliveryStatus = await Promise.all(deliveryPromises);
       }
     }
 
-    // Only move to processed after successful text delivery (if required)
+    // Only move to processed after attempting all notifications
     newLocation = await moveToProcessed(sourceKey, validatedData.type === 'service_request', validatedData);
     processingStatus = 'completed';
     console.log(`📁 Email archived: ${newLocation.split('/').slice(-3).join('/')}`);
@@ -204,7 +215,7 @@ export async function parseEmail(emailContent, sourceKey, notificationNumber = D
       processing_time_ms: processingTime,
       status: processingStatus,
       type: validatedData.type,
-      message_delivered: messageDelivered,
+      message_delivery_status: messageDeliveryStatus,
       source_key: sourceKey,
       destination_key: newLocation
     }));
@@ -219,7 +230,8 @@ export async function parseEmail(emailContent, sourceKey, notificationNumber = D
       attachments: parsedMail.attachments,
       date: parsedMail.date,
       processed_location: newLocation,
-      processing_time_ms: processingTime
+      processing_time_ms: processingTime,
+      message_delivery_status: messageDeliveryStatus
     };
   } catch (error) {
     // Log error metrics

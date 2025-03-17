@@ -1,12 +1,14 @@
+// Load environment variables first
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { S3Client, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
-import { parseEmail } from './emailParser.mjs';
 
-// Load environment variables from .env file
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: `${__dirname}/.env` });
+
+// Other imports after environment variables are loaded
+import { S3Client, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { parseEmail } from './emailParser.mjs';
 
 const bucketName = process.env.S3_BUCKET_NAME;
 const prefix = 'incoming/utah_mechanical_systems/';
