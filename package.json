@@ -1,0 +1,16 @@
+{
+  "name": "ums-email-parser",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs",
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "dotenv": "^16.4.5",
+    "mailparser": "^3.6.5",
+    "openai": "^4.28.0",
+    "zod": "^3.22.4"
+  }
+}
